@@ -37,16 +37,19 @@ This repository contains a secure solution to automate the provisioning of Grafa
 
 ## **Repository Structure**
 
-bash  
-Copy code  
-`.`  
-`├── charts/               # Helm charts for Grafana deployment`  
-`├── manifests/            # Kubernetes manifests (e.g., Secrets, ConfigMaps)`  
-`├── scripts/              # Scripts for the Init Container`
-`    └── create_users.py   # Python script for user provisioning`
-`├── README.md             # Documentation`  
-`├── vault/                # Vault setup scripts and policies`  
-`└── examples/             # Example user data`
+.
+├── manifests/            # Kubernetes manifests
+│   ├── configmap.yaml    # ConfigMap for environment variables
+│   ├── secret.yaml       # Secret for sensitive data like tokens
+│   ├── ingress.yaml      # Ingress for Grafana (optional)
+│   ├── rbac.yaml         # RBAC for Vault (optional)
+├── scripts/              # Python script for user provisioning
+│   └── create_users.py
+├── README.md             # Documentation
+├── vault/                # Vault setup scripts and policies
+└── examples/             # Example configurations
+    ├── values.yaml       # Example custom values for Grafana Helm chart
+    └── .env              # Example environment variables for the Python script
 
 ---
 
@@ -67,15 +70,11 @@ Copy code
 ### **Step 1: Setup Vault**
 
 Deploy Vault and enable the KV secrets engine:  
-bash  
-Copy code  
 `vault secrets enable -path=secret kv`
 
 1. 
 
 Store user credentials in Vault:  
-bash  
-Copy code  
 `vault kv put secret/grafana/users \`  
   `admin_token="your-admin-api-token" \`  
   `users='[`  
@@ -86,8 +85,6 @@ Copy code
 2. 
 
 Create a policy to allow access to user data:  
-hcl  
-Copy code  
 `path "secret/data/grafana/users" {`  
   `capabilities = ["read"]`  
 `}`
@@ -100,16 +97,12 @@ Copy code
 ### **Step 2: Deploy Grafana with Helm**
 
 Clone this repository:  
-bash  
-Copy code  
 `git clone https://github.com/your-repo/grafana-user-provisioning.git`  
 `cd grafana-user-provisioning`
 
 1. 
 
 Update `values.yaml` with your Grafana and Vault configurations:  
-yaml  
-Copy code  
 `grafana:`  
   `ingress:`  
     `enabled: true`  
@@ -127,8 +120,6 @@ Copy code
 2. 
 
 Install the Helm chart:  
-bash  
-Copy code  
 `helm install grafana charts/grafana`
 
 3. 
@@ -138,8 +129,6 @@ Copy code
 ### **Step 3: Verify User Provisioning**
 
 Confirm Grafana is running:  
-bash  
-Copy code  
 `kubectl get pods -n <namespace>`
 
 1.   
@@ -153,8 +142,6 @@ Copy code
 ## **Scaling to 50+ Users**
 
 Add new users to Vault:  
-bash  
-Copy code  
 `vault kv put secret/grafana/users \`  
   `users='[`  
     `{"username": "viewer1", "password": "securepassword1", "role": "Viewer"},`  
@@ -165,8 +152,6 @@ Copy code
 1. 
 
 Update the Helm release:  
-bash  
-Copy code  
 `helm upgrade grafana charts/grafana`
 
 2. 
