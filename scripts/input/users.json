@@ -1,0 +1,17 @@
+[
+    {
+        "username": "viewer1",
+        "name": "Viewer 1",
+        "role": "Viewer"
+    },
+    {
+        "username": "editor1",
+        "name": "Editor 1",
+        "role": "Editor"
+    },
+    {
+        "username": "admin1",
+        "name": "Admin 1",
+        "role": "Admin"
+    }
+]

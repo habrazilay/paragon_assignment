@@ -1,0 +1,39 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-user-scripts
+data:
+  create_users.sh: |
+    #!/bin/sh
+
+    set -euo pipefail
+
+    # Fetch the encryption key from Vault
+    ENCRYPTION_KEY=$(curl -s --header "X-Vault-Token: $VAULT_TOKEN" \
+        "$VAULT_URL/v1/secret/data/grafana/encryption-key" | jq -r '.data.key')
+
+    # Decrypt the user list
+    openssl enc -d -aes-256-cbc -pbkdf2 -in /encrypted/users.json.enc -out /decrypted/users.json -pass pass:"$ENCRYPTION_KEY"
+
+    # Parse and process the user list
+    users=$(cat /decrypted/users.json | jq -c '.[]')
+
+    echo "$users" | while read -r user; do
+        username=$(echo "$user" | jq -r '.username')
+        password=$(echo "$user" | jq -r '.password')
+        role=$(echo "$user" | jq -r '.role')
+
+        echo "Creating user: $username with role: $role"
+        curl -s -X POST "$GRAFANA_URL/api/admin/users" \
+            -H "Authorization: Basic $(echo -n "$GRAFANA_ADMIN_USER:$GRAFANA_ADMIN_PASSWORD" | base64)" \
+            -H "Content-Type: application/json" \
+            -d "{
+                \"name\": \"$username\",
+                \"email\": \"$username@example.com\",
+                \"login\": \"$username\",
+                \"password\": \"$password\",
+                \"role\": \"$role\"
+            }"
+    done
+
+    echo "All users provisioned successfully!"

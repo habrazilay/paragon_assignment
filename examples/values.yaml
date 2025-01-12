@@ -1,0 +1,53 @@
+grafana:
+  persistence:
+    enabled: true
+    storageClassName: manual
+    accessModes:
+      - ReadWriteOnce
+    size: 1Gi
+    existingClaim: grafana
+
+  env:
+    - name: GF_SECURITY_ADMIN_PASSWORD__FILE
+      value: "/etc/secrets/admin-password"
+    - name: GF_FEATURE_TOGGLES_ENABLE_SERVICE_ACCOUNTS
+      value: "true"
+
+  grafana.ini:
+    feature_toggles:
+      enable_service_accounts: true
+
+  extraVolumes:
+    - name: grafana-admin-password
+      secret:
+        secretName: grafana-admin-password
+
+  extraVolumeMounts:
+    - name: grafana-admin-password
+      mountPath: /etc/secrets
+      readOnly: true
+
+initContainers:
+  - name: create-grafana-users
+    image: busybox
+    command: ["sh", "/scripts/create_users.sh"]
+    volumeMounts:
+      - name: user-scripts
+        mountPath: /scripts
+    envFrom:
+      - configMapRef:
+          name: grafana-user-env
+      - secretRef:
+          name: grafana-user-secrets
+
+volumes:
+  - name: user-scripts
+    configMap:
+      name: grafana-user-scripts
+
+persistence:
+  enabled: true
+  accessModes:
+    - ReadWriteOnce
+  size: 10Gi
+  storageClassName: default

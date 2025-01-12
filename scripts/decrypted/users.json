@@ -1,0 +1,17 @@
+[
+    {
+        "username": "viewer1",
+        "password": "U2FsdGVkX19rFk28CQOXOTF0XPYZtOiAKKYxRSeumjc=",
+        "role": "Viewer"
+    },
+    {
+        "username": "editor1",
+        "password": "U2FsdGVkX18Lh3sdA6fVpHTK5QIRc0hOb0F2uLcYBtE=",
+        "role": "Editor"
+    },
+    {
+        "username": "admin1",
+        "password": "U2FsdGVkX18Fklf8OJVT9mQH7LU5Bfx9RNwe1LUF7uU=",
+        "role": "Admin"
+    }
+]
