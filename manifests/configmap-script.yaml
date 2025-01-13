@@ -2,6 +2,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: grafana-user-scripts
+  namespace: default
 data:
   create_users.sh: |
     #!/bin/sh
@@ -12,13 +13,21 @@ data:
     ENCRYPTION_KEY=$(curl -s --header "X-Vault-Token: $VAULT_TOKEN" \
         "$VAULT_URL/v1/secret/data/grafana/encryption-key" | jq -r '.data.key')
 
+    if [ -z "$ENCRYPTION_KEY" ]; then
+        echo "Error: Encryption key not fetched from Vault." >&2
+        exit 1
+    fi
+
     # Decrypt the user list
     openssl enc -d -aes-256-cbc -pbkdf2 -in /encrypted/users.json.enc -out /decrypted/users.json -pass pass:"$ENCRYPTION_KEY"
 
-    # Parse and process the user list
-    users=$(cat /decrypted/users.json | jq -c '.[]')
+    if [ $? -ne 0 ]; then
+        echo "Error: Failed to decrypt user list." >&2
+        exit 1
+    fi
 
-    echo "$users" | while read -r user; do
+    # Process and create users
+    cat /decrypted/users.json | jq -c '.[]' | while read -r user; do
         username=$(echo "$user" | jq -r '.username')
         password=$(echo "$user" | jq -r '.password')
         role=$(echo "$user" | jq -r '.role')
