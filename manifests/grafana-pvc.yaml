@@ -3,9 +3,9 @@ kind: PersistentVolumeClaim
 metadata:
   name: grafana
 spec:
-  storageClassName: grafana-storage
   accessModes:
     - ReadWriteOnce
   resources:
     requests:
-      storage: 1Gi
+      storage: 10Gi
+  storageClassName: grafana-storage

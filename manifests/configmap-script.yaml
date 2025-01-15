@@ -5,44 +5,93 @@ metadata:
   namespace: default
 data:
   create_users.sh: |
-    #!/bin/sh
+    #!/bin/bash
 
     set -euo pipefail
 
-    # Fetch the encryption key from Vault
-    ENCRYPTION_KEY=$(curl -s --header "X-Vault-Token: $VAULT_TOKEN" \
-        "$VAULT_URL/v1/secret/data/grafana/encryption-key" | jq -r '.data.key')
+    LOG_DIR="/logs"
+    LOG_FILE="$LOG_DIR/create_users_$(date +'%Y-%m-%d').log"
+    mkdir -p "$LOG_DIR"
 
-    if [ -z "$ENCRYPTION_KEY" ]; then
-        echo "Error: Encryption key not fetched from Vault." >&2
+    log() {
+        local timestamp; timestamp=$(date +'%Y-%m-%d %H:%M:%S')
+        printf "%s - %s\n" "$timestamp" "$1" | tee -a "$LOG_FILE"
+    }
+
+    generate_password() {
+        local password
+        password=$(LC_ALL=C tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 12)
+        if [[ -z $password ]]; then
+            log "Error: Failed to generate a password."
+            return 1
+        fi
+        printf "%s" "$password"
+    }
+
+    log "Fetching Grafana credentials from Kubernetes secrets..."
+    namespace="default"
+
+    admin_user=$(kubectl get secret grafana -n "$namespace" -o jsonpath='{.data.admin-user}' | base64 --decode)
+    admin_password=$(kubectl get secret grafana -n "$namespace" -o jsonpath='{.data.admin-password}' | base64 --decode)
+
+    if [[ -z $admin_user || -z $admin_password ]]; then
+        log "Error: Failed to retrieve Grafana credentials from Kubernetes secrets."
         exit 1
     fi
 
-    # Decrypt the user list
-    openssl enc -d -aes-256-cbc -pbkdf2 -in /encrypted/users.json.enc -out /decrypted/users.json -pass pass:"$ENCRYPTION_KEY"
+    grafana_url="${GRAFANA_URL}"
+    vault_url="${VAULT_URL}"
+    vault_secret_path="${VAULT_SECRET_PATH}"
+    log "Using Grafana URL: $grafana_url"
+    log "Using Vault URL: $vault_url"
+    input_file="/encrypted/users.json"
 
-    if [ $? -ne 0 ]; then
-        echo "Error: Failed to decrypt user list." >&2
+    if [[ ! -f "$input_file" ]]; then
+        log "Error: Input file $input_file not found."
         exit 1
     fi
 
-    # Process and create users
-    cat /decrypted/users.json | jq -c '.[]' | while read -r user; do
+    log "Reading input file: $input_file"
+
+    if ! jq empty "$input_file" >/dev/null 2>&1; then
+        log "Error: Invalid JSON format in $input_file. Exiting."
+        exit 1
+    fi
+
+    jq -c '.[]' "$input_file" | while read -r user; do
         username=$(echo "$user" | jq -r '.username')
-        password=$(echo "$user" | jq -r '.password')
+        name=$(echo "$user" | jq -r '.name')
         role=$(echo "$user" | jq -r '.role')
 
-        echo "Creating user: $username with role: $role"
-        curl -s -X POST "$GRAFANA_URL/api/admin/users" \
-            -H "Authorization: Basic $(echo -n "$GRAFANA_ADMIN_USER:$GRAFANA_ADMIN_PASSWORD" | base64)" \
-            -H "Content-Type: application/json" \
-            -d "{
-                \"name\": \"$username\",
-                \"email\": \"$username@example.com\",
-                \"login\": \"$username\",
-                \"password\": \"$password\",
-                \"role\": \"$role\"
-            }"
-    done
+        if [[ -z "$username" || -z "$name" || -z "$role" ]]; then
+            log "Error: Missing fields for a user entry. Skipping."
+            continue
+        fi
 
-    echo "All users provisioned successfully!"
+        log "Attempting to create user: $username with role: $role"
+
+        password=$(generate_password) || { log "Failed to generate a password. Skipping user $username."; continue; }
+
+        response=$(curl -s -w "\n%{http_code}" -X POST "$grafana_url/api/admin/users" \
+            -H "Authorization: Basic $(printf "%s:%s" "$admin_user" "$admin_password" | base64)" \
+            -H "Content-Type: application/json" \
+            -d "$(jq -n --arg name "$name" --arg email "$username@example.com" --arg login "$username" --arg password "$password" --arg role "$role" \
+                '{"name": $name, "email": $email, "login": $login, "password": $password, "role": $role}')")
+
+        if [[ $? -ne 0 ]]; then
+            log "Error: Failed to connect to Grafana API. Skipping user $username."
+            continue
+        fi
+
+        http_code=$(printf "%s" "$response" | tail -n1)
+        response_body=$(printf "%s" "$response" | head -n1)
+
+        log "HTTP Response Code: $http_code"
+        log "HTTP Response Body: $response_body"
+
+        if [[ "$http_code" -eq 201 || "$http_code" -eq 200 ]]; then
+            log "User $username created successfully."
+        else
+            log "Error creating user $username. HTTP $http_code: $response_body"
+        fi
+    done

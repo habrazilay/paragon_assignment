@@ -1,11 +1,17 @@
+persistence:
+  enabled: true
+  accessModes:
+    - ReadWriteOnce
+  size: 10Gi
+  storageClassName: grafana-storage
+
 grafana:
   persistence:
     enabled: true
-    storageClassName: manual
+    storageClassName: grafana-storage
     accessModes:
       - ReadWriteOnce
-    size: 1Gi
-    existingClaim: grafana
+    size: 10Gi
 
   env:
     - name: GF_SECURITY_ADMIN_PASSWORD__FILE
@@ -29,11 +35,17 @@ grafana:
 
 initContainers:
   - name: create-grafana-users
-    image: busybox
+    image: curlimages/curl:latest
     command: ["sh", "/scripts/create_users.sh"]
     volumeMounts:
       - name: user-scripts
         mountPath: /scripts
+      - name: encrypted-users
+        mountPath: /encrypted
+      - name: decrypted-users
+        mountPath: /decrypted
+      - name: logs-volume
+        mountPath: /logs
     envFrom:
       - configMapRef:
           name: grafana-user-env
@@ -44,10 +56,11 @@ volumes:
   - name: user-scripts
     configMap:
       name: grafana-user-scripts
-
-persistence:
-  enabled: true
-  accessModes:
-    - ReadWriteOnce
-  size: 10Gi
-  storageClassName: default
+  - name: encrypted-users
+    hostPath:
+      path: /mnt/data/encrypted
+      type: Directory
+  - name: decrypted-users
+    emptyDir: {}
+  - name: logs-volume
+    emptyDir: {}
